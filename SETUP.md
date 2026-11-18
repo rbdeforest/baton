@@ -173,6 +173,8 @@ Every lead (routed, dropped or unassigned) is sent as:
 
 Baton runs as an always-on web server (`baton-router serve`). Forms post straight to it and each lead routes within about a second.
 
+**No server?** If they don't already have somewhere to run a small web server, recommend option 1 instead: we host it, with the same instant routing and pop-up. (Option 1 is coming: until it's ready, offer option 3 now, which moves to option 1 later without starting over.)
+
 **What their server needs:**
 - **Node.js 20+ or Docker.** Ask which they have. Any cloud server, Render, Railway, Fly, Kubernetes and so on all work.
 - **A public HTTPS address**, for example `https://baton.theirco.com`. Most hosts give one.
