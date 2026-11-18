@@ -9,9 +9,10 @@ Set up Baton for me: read https://raw.githubusercontent.com/rbdeforest/baton/mai
 - **Free on your computer.** Leads wait in a Google Sheet, and a background job routes them every few minutes.
 - **Your rules.** Drop junk, split by any form answer, round robin (even or weighted), daily caps, away dates, a fallback.
 - **Your tools.** Every result goes to a signed webhook. Zapier, n8n or your own agent writes it wherever you want.
+- **Salesforce, if you use it.** Log in through a browser tab and leads go to whoever already owns the account, contact or lead, and rules can use account fields. Baton only reads; it never writes to Salesforce.
 - **One file.** Everything lives in `baton.yaml` ([schema](schema/baton.schema.json)), so you can read it, edit it and keep it in git.
 
-Coming: Salesforce account and owner lookups, self-hosting with Docker, hosted Baton, and a calendar pop-up after the form.
+Coming: self-hosting with Docker, hosted Baton, and a calendar pop-up after the form.
 
 ## Commands
 
