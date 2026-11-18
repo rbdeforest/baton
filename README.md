@@ -15,10 +15,7 @@ Set up Baton for me: read https://raw.githubusercontent.com/rbdeforest/baton/mai
 
 - **Booking pop-up.** On your own server, the routed rep's Calendly, HubSpot Meetings or Cal.com page pops up after the form, skipping reps with no open time.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/rbdeforest/baton)
-(See "Deploy to Render" in [SETUP.md](SETUP.md) for the three settings it asks for.)
-
-Coming: hosted Baton.
+Coming: hosted Baton and one-click deploy buttons.
 
 ## Commands
 

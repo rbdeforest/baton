@@ -205,12 +205,6 @@ server:
    - **Node:** `npx -y baton-router@latest serve` in that folder, kept running by their usual process manager (systemd, pm2 or their host's start command).
 5. Check `https://<public_url>/health` answers `{"ok":true,...}`, then go to step 12.
 
-**Easiest: Deploy to Render** (no server or Docker knowledge needed). Render runs Baton's image with a disk, on their own Render account. A disk needs a paid Render instance: free instances lose their files.
-1. Run `npx -y baton-router@latest config export` and `npx -y baton-router@latest secrets export`. Each prints one long line.
-2. Open https://render.com/deploy?repo=https://github.com/rbdeforest/baton (the button in Baton's README), log in or sign up, and fill in the three settings: `BATON_YAML_B64` (the first line), `BATON_SECRETS` (the second) and `TZ` (their time zone, like `America/New_York`). Click **Deploy**.
-3. Render shows the address it gave Baton, like `https://baton-xyz.onrender.com`. Put that in `server.public_url`, run `config export` again, and paste the new line into `BATON_YAML_B64` in the Render service's **Environment** tab (saving redeploys it). Then run `snippet` for the form code.
-4. **To change rules later:** edit `baton.yaml` on their computer, run `validate`, then `config export`, and paste the line into `BATON_YAML_B64` on Render. `BATON_YAML_B64` always wins over any `baton.yaml` file.
-
 If Salesforce is down when a lead arrives, the form still gets its answer, and the lead routes as soon as Salesforce answers again (Baton retries every minute).
 
 ### Booking pop-up (option 2 only)

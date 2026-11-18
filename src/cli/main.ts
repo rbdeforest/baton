@@ -39,8 +39,6 @@ const HELP = `baton-router ${VERSION}: open-source lead router
   hook-secret              The key form tools send to /hook (server mode)
   secrets export           One line to copy the logins onto a new server
                            (set it as BATON_SECRETS there; used once)
-  config export            baton.yaml as one line, for BATON_YAML_B64 on
-                           hosts like Render (edit there to change rules)
 
   calendar token calendly|hubspot TOKEN
                            Save a token so Baton can check reps' open time
@@ -64,12 +62,7 @@ function randomSecret(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * baton.yaml, or on hosts where files can't be handed over (deploy buttons),
- * the whole file from the BATON_YAML_B64 setting, which always wins.
- */
 function loadConfig(path: string): Config {
-  if (process.env.BATON_YAML_B64) return parseConfig(Buffer.from(process.env.BATON_YAML_B64, "base64").toString("utf8"));
   if (!existsSync(path)) throw new Error(`no baton.yaml at ${resolve(path)}. Run setup first (see SETUP.md).`);
   return parseConfig(readFileSync(path, "utf8"));
 }
@@ -317,13 +310,6 @@ async function main(argv: string[]): Promise<number> {
       const config = loadConfig(configPath);
       const url = config.server ? `${config.server.public_url.replace(/\/$/, "")}/hook` : "(your Baton address)/hook";
       console.log(`Send leads to: POST ${url}\nWith header: Authorization: Bearer ${ensureSecret(store, "hook_secret")}`);
-      return 0;
-    }
-
-    case "config": {
-      if (args[0] !== "export") throw new Error("use: config export");
-      loadConfig(configPath);
-      console.log(Buffer.from(readFileSync(configPath, "utf8")).toString("base64"));
       return 0;
     }
 
