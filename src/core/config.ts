@@ -53,10 +53,22 @@ function crossCheck(config: Config): string[] {
     if (pool.distribution === "weighted" && !pool.weights) problems.push(`pool "${id}" is weighted but has no weights`);
   }
   const checkTarget = (t: Target, where: string) => {
+    if ("owner" in t && config.crm?.type !== "salesforce") problems.push(`${where} routes to the Salesforce owner, but crm isn't set to salesforce`);
     if ("rep" in t && !repIds.has(t.rep)) problems.push(`${where} assigns to rep "${t.rep}", who isn't in reps`);
     if ("pool" in t && !(t.pool in pools)) problems.push(`${where} assigns to pool "${t.pool}", which doesn't exist`);
   };
-  (config.routes ?? []).forEach((r, i) => checkTarget(r.assign, `route ${i + 1} ("${r.name}")`));
+  (config.routes ?? []).forEach((r, i) => {
+    checkTarget(r.assign, `route ${i + 1} ("${r.name}")`);
+    for (const c of [...(r.when?.all ?? []), ...(r.when?.any ?? [])]) {
+      if (!c.field.toLowerCase().startsWith("account.")) continue;
+      if (config.crm?.type !== "salesforce") problems.push(`route "${r.name}" uses ${c.field}, which needs crm: salesforce`);
+      else {
+        const name = c.field.slice("account.".length).toLowerCase();
+        const listed = name === "name" || (config.crm.account_fields ?? []).some((f) => f.toLowerCase() === name);
+        if (!listed) problems.push(`route "${r.name}" uses ${c.field}: add ${c.field.slice(8)} to crm.account_fields`);
+      }
+    }
+  });
   checkTarget(config.fallback, "fallback");
   return problems;
 }

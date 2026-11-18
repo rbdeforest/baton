@@ -18,7 +18,17 @@ export interface When {
   any?: Condition[];
 }
 
-export type Target = { rep: string } | { pool: string };
+/** Which Salesforce record's owner to try, in order. */
+export type OwnerSource = "account" | "contact" | "lead";
+
+export type Target =
+  | { rep: string }
+  | { pool: string }
+  | {
+      owner: OwnerSource[];
+      /** The owner isn't one of your reps: send it to them anyway, or skip to the next route. */
+      if_not_rep: "route_to_owner" | "skip";
+    };
 
 export interface Rep {
   id: string;
@@ -59,6 +69,33 @@ export interface Config {
   routes?: Route[];
   fallback: Target;
   webhook: { url: string };
+  crm?: SalesforceConfig;
+}
+
+export interface SalesforceConfig {
+  type: "salesforce";
+  /** Account field holding the company's website or domain. */
+  account_domain_field?: string;
+  /** Account fields rules can use, as account.<Field>. */
+  account_fields?: string[];
+  /** Several accounts share the lead's domain: use the oldest or newest. */
+  multiple_accounts?: "oldest" | "newest";
+}
+
+export interface CrmOwner {
+  id: string;
+  name: string;
+  email: string | null;
+  active: boolean;
+  /** False for queues. */
+  is_user: boolean;
+}
+
+/** What Salesforce already knows about a lead, looked up just before routing. */
+export interface CrmContext {
+  account?: { id: string; name: string; fields: Record<string, string>; owner?: CrmOwner };
+  contact?: { id: string; owner?: CrmOwner };
+  lead?: { id: string; owner?: CrmOwner };
 }
 
 /** One form submission, as read from the inbox. */
@@ -68,6 +105,7 @@ export interface Lead {
   /** Where the inbox keeps it right now (for the Sheet: the row number). */
   ref: number;
   fields: Record<string, string>;
+  crm?: CrmContext;
 }
 
 export type Decision =
@@ -120,6 +158,12 @@ export interface WebhookPayload {
   routed_to: { name: string; email: string; booking_link?: string } | null;
   rule: string;
   routed_at: string;
+  /** Only when Salesforce is connected: the records Baton found, so your tools can update them. */
+  salesforce?: {
+    account: { id: string; name: string } | null;
+    contact_id: string | null;
+    lead_id: string | null;
+  };
 }
 
 export function emptyState(): State {

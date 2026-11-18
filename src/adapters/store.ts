@@ -4,10 +4,12 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { emptyState, type State } from "../core/types.ts";
+import type { SalesforceCredentials } from "./salesforce.ts";
 
 export interface Secrets {
   sheet_secret?: string;
   webhook_secret?: string;
+  salesforce?: SalesforceCredentials;
 }
 
 export interface LogLine {
@@ -19,6 +21,8 @@ export interface LogLine {
   routed_to: string | null;
   rule: string;
   reason?: string;
+  /** What Salesforce knew, when it was looked up. */
+  salesforce?: { account?: string; contact?: string; lead?: string };
 }
 
 export class FileStore {

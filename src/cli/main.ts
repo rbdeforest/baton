@@ -12,6 +12,9 @@ import { SheetInbox } from "../adapters/sheet.ts";
 import { FileStore } from "../adapters/store.ts";
 import { deliver } from "../adapters/webhook.ts";
 import { installTimer, timerInstalled, uninstallTimer } from "./timer.ts";
+import { connectSalesforce } from "./connect.ts";
+import { API_VERSION, DEFAULT_CLIENT_ID, SalesforceClient, lookup } from "../adapters/salesforce.ts";
+import { findEmail } from "../core/fields.ts";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const VERSION = (JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string }).version;
@@ -30,6 +33,13 @@ const HELP = `baton-router ${VERSION}: open-source lead router
   status                   Last run, today's counts, webhooks waiting
   log [--n 20]             Recent routing decisions
 
+  connect salesforce       Log in to Salesforce in your browser
+           [--login-url URL]  (sandbox: https://test.salesforce.com)
+  salesforce check         Who Baton is logged in as
+  salesforce users         Active users, to pick reps from
+  salesforce fields        Account fields rules can use
+  salesforce lookup EMAIL  What Baton finds in Salesforce for one email
+
   --config PATH            baton.yaml to use (default: ./baton.yaml)`;
 
 function arg(args: string[], name: string): string | undefined {
@@ -44,6 +54,19 @@ function randomSecret(): string {
 function loadConfig(path: string): Config {
   if (!existsSync(path)) throw new Error(`no baton.yaml at ${resolve(path)}. Run setup first (see SETUP.md).`);
   return parseConfig(readFileSync(path, "utf8"));
+}
+
+function salesforceClient(store: FileStore): SalesforceClient {
+  const creds = store.loadSecrets().salesforce;
+  if (!creds) throw new Error("not connected to Salesforce yet. Run: baton-router connect salesforce");
+  return new SalesforceClient(creds, (next) => store.saveSecrets({ ...store.loadSecrets(), salesforce: next }));
+}
+
+function crmLookup(config: Config, store: FileStore): ((lead: Lead) => ReturnType<typeof lookup>) | undefined {
+  if (config.crm?.type !== "salesforce") return undefined;
+  const client = salesforceClient(store);
+  const crm = config.crm;
+  return (lead) => lookup(client, crm, findEmail(lead.fields));
 }
 
 function requireSecret(store: FileStore, name: "sheet_secret" | "webhook_secret", fix: string): string {
@@ -98,17 +121,20 @@ async function main(argv: string[]): Promise<number> {
       // Start from the real counts so the answer matches what would happen next.
       const state = existsSync(join(store.dir, "state.json")) ? store.loadState() : emptyState();
       const now = new Date();
-      list.forEach((fields, i) => {
+      const crm = crmLookup(config, store);
+      for (const [i, fields] of list.entries()) {
         const strFields = Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, String(v)]));
         const lead: Lead = { key: `simulate:${i}`, ref: i, fields: strFields };
+        if (crm) lead.crm = await crm(lead);
         const decision = route(config, lead, state, now);
         recordAssignment(config, state, decision, now);
         const p = buildPayload(lead, decision, "ld_simulated", now);
         const who = p.routed_to ? `${p.routed_to.name} <${p.routed_to.email}>` : "nobody";
         const why = decision.status === "unassigned" ? ` (${decision.reason})` : "";
-        console.log(`${i + 1}. ${p.lead.email ?? "(no email)"} -> ${decision.status}: ${who}  [${decision.rule}]${why}`);
-      });
-      console.log("\nSimulated only: nothing saved, no webhook sent.");
+        const sf = lead.crm ? `  (Salesforce: ${lead.crm.account ? `account ${lead.crm.account.name}` : "no account"}${lead.crm.contact ? ", contact" : ""}${lead.crm.lead ? ", lead" : ""})` : "";
+        console.log(`${i + 1}. ${p.lead.email ?? "(no email)"} -> ${decision.status}: ${who}  [${decision.rule}]${why}${sf}`);
+      }
+      console.log("\nSimulated only: nothing saved, no webhook sent, nothing written to Salesforce.");
       return 0;
     }
 
@@ -156,6 +182,7 @@ async function main(argv: string[]): Promise<number> {
           loadState: () => store.loadState(),
           saveState: (s) => store.saveState(s),
           appendLog: (lines) => store.appendLog(lines),
+          lookup: crmLookup(config, store),
         }),
       ).catch((e: unknown) => {
         store.writeHeartbeat({ last_run: startedAt, error: (e as Error).message });
@@ -171,6 +198,7 @@ async function main(argv: string[]): Promise<number> {
           `webhooks sent ${summary.webhooks_sent} (waiting ${summary.webhooks_waiting}), rows marked ${summary.marked}`,
       );
       for (const p of summary.mark_problems) console.log(`  could not mark ${p}`);
+      for (const p of summary.lookup_errors) console.log(`  waiting for next run, Salesforce lookup failed for ${p}`);
       return 0;
     }
 
@@ -216,6 +244,50 @@ async function main(argv: string[]): Promise<number> {
         console.log(`${l.at}  ${l.email ?? "(no email)"} -> ${l.status}${l.routed_to ? ` ${l.routed_to}` : ""}  [${l.rule}]${l.reason ? ` (${l.reason})` : ""}`);
       }
       return 0;
+    }
+
+    case "connect": {
+      if (args[0] !== "salesforce") throw new Error("use: connect salesforce");
+      const loginUrl = arg(args, "--login-url") ?? "https://login.salesforce.com";
+      const clientId = arg(args, "--client-id") ?? DEFAULT_CLIENT_ID;
+      if (!clientId) throw new Error("no Salesforce app yet: pass --client-id");
+      const creds = await connectSalesforce(loginUrl, clientId);
+      store.saveSecrets({ ...store.loadSecrets(), salesforce: creds });
+      console.log(`Connected to Salesforce as ${creds.username ?? "(unknown user)"} (${creds.instance_url}). Baton stays connected; it only reads.`);
+      return 0;
+    }
+
+    case "salesforce": {
+      const client = salesforceClient(store);
+      const sub = args[0];
+      if (sub === "check") {
+        const r = await client.query<{ Name: string; OrganizationType: string }>("SELECT Name, OrganizationType FROM Organization");
+        const c = client.connection;
+        console.log(`Connected as ${c.username ?? "(unknown)"} to "${r.records[0]?.Name}" (${r.records[0]?.OrganizationType}), ${c.instance_url}`);
+        return 0;
+      }
+      if (sub === "users") {
+        const r = await client.query<{ Name: string; Email: string; Title: string | null }>(
+          "SELECT Name, Email, Title FROM User WHERE IsActive = true AND UserType = 'Standard' ORDER BY Name LIMIT 500",
+        );
+        for (const u of r.records) console.log(`${u.Name}\t${u.Email}${u.Title ? `\t${u.Title}` : ""}`);
+        return 0;
+      }
+      if (sub === "fields") {
+        const d = await client.request<{ fields: { name: string; label: string; type: string }[] }>(`/services/data/${API_VERSION}/sobjects/Account/describe`);
+        for (const f of d.fields) console.log(`${f.name}\t${f.label}\t${f.type}`);
+        return 0;
+      }
+      if (sub === "lookup") {
+        const email = args[1];
+        if (!email) throw new Error("use: salesforce lookup someone@company.com");
+        const config = existsSync(configPath) ? loadConfig(configPath) : undefined;
+        const ctx = await lookup(client, config?.crm ?? { type: "salesforce" }, email);
+        console.log(JSON.stringify(ctx, null, 2));
+        console.log(`(${client.calls} Salesforce API call${client.calls === 1 ? "" : "s"})`);
+        return 0;
+      }
+      throw new Error("use: salesforce check | users | fields | lookup EMAIL");
     }
 
     case undefined:

@@ -1,11 +1,26 @@
 // The router. Pure: no files, no network, no clock except the `now` passed in,
 // so the same code runs on a laptop, in Docker, or on a serverless host.
 
-import type { Condition, Config, Decision, Lead, Pool, Rep, State, Target, When } from "./types.ts";
-import { PERSONAL_DOMAINS, emailDomain, findEmail, getField } from "./fields.ts";
+import type { Condition, Config, Decision, Lead, OwnerSource, Pool, Rep, State, Target, When } from "./types.ts";
+import { PERSONAL_DOMAINS, emailDomain, findEmail, getField, normalizeKey } from "./fields.ts";
 
-export function matchesCondition(fields: Record<string, string>, c: Condition): boolean {
-  const raw = getField(fields, c.field);
+/** A form field, or account.<Field> from Salesforce. */
+export function valueOf(lead: Lead, field: string): string | undefined {
+  if (field.toLowerCase().startsWith("account.")) {
+    const account = lead.crm?.account;
+    if (!account) return undefined;
+    const want = normalizeKey(field.slice("account.".length));
+    if (want === "name") return account.name;
+    for (const [k, v] of Object.entries(account.fields)) {
+      if (normalizeKey(k) === want) return v;
+    }
+    return undefined;
+  }
+  return getField(lead.fields, field);
+}
+
+export function matchesCondition(lead: Lead, c: Condition): boolean {
+  const raw = valueOf(lead, c.field);
   if (raw === undefined || raw === "") return false;
   const value = raw.trim();
   const lower = value.toLowerCase();
@@ -30,10 +45,10 @@ function toNumber(value: string): number | null {
   return unit === "k" ? n * 1_000 : unit === "m" ? n * 1_000_000 : n;
 }
 
-export function matchesWhen(fields: Record<string, string>, when: When | undefined): boolean {
+export function matchesWhen(lead: Lead, when: When | undefined): boolean {
   if (!when) return true;
-  if (when.all && !when.all.every((c) => matchesCondition(fields, c))) return false;
-  if (when.any && when.any.length > 0 && !when.any.some((c) => matchesCondition(fields, c))) return false;
+  if (when.all && !when.all.every((c) => matchesCondition(lead, c))) return false;
+  if (when.any && when.any.length > 0 && !when.any.some((c) => matchesCondition(lead, c))) return false;
   return true;
 }
 
@@ -49,16 +64,16 @@ function isAway(rep: Rep, now: Date): boolean {
 }
 
 /** Why a drop rule fired, or null to keep the lead. */
-function dropReason(config: Config, fields: Record<string, string>): string | null {
+function dropReason(config: Config, lead: Lead): string | null {
   const drop = config.drop;
   if (!drop) return null;
-  const domain = emailDomain(findEmail(fields));
+  const domain = emailDomain(findEmail(lead.fields));
   if (drop.personal_email && domain && PERSONAL_DOMAINS.has(domain)) return "drop: personal email";
   if (domain && drop.domains?.some((d) => domain === d.toLowerCase() || domain.endsWith("." + d.toLowerCase()))) {
     return "drop: blocked domain";
   }
   for (const rule of drop.rules ?? []) {
-    if (matchesWhen(fields, rule.when)) return `drop: ${rule.name}`;
+    if (matchesWhen(lead, rule.when)) return `drop: ${rule.name}`;
   }
   return null;
 }
@@ -103,6 +118,37 @@ export function pickFromPool(
   return { rep: candidates[0]!.rep };
 }
 
+/**
+ * The first usable Salesforce owner in the order given. Queues, inactive users
+ * and away reps are passed over. Null when nobody qualifies.
+ */
+function ownerDecision(
+  config: Config,
+  lead: Lead,
+  order: OwnerSource[],
+  ifNotRep: "route_to_owner" | "skip",
+  rule: string,
+  now: Date,
+): Decision | null {
+  for (const source of order) {
+    const owner = lead.crm?.[source]?.owner;
+    if (!owner || !owner.is_user || !owner.active || !owner.email) continue;
+    const rep = config.reps.find((r) => r.email.toLowerCase() === owner.email!.toLowerCase());
+    if (rep) {
+      if (isAway(rep, now)) continue;
+      return { status: "routed", rep, rule: `${rule} (${source} owner)` };
+    }
+    if (ifNotRep === "route_to_owner") {
+      return {
+        status: "routed",
+        rep: { id: `salesforce:${owner.id}`, name: owner.name, email: owner.email },
+        rule: `${rule} (${source} owner, not a Baton rep)`,
+      };
+    }
+  }
+  return null;
+}
+
 function resolveTarget(
   config: Config,
   target: Target,
@@ -110,6 +156,9 @@ function resolveTarget(
   state: State,
   now: Date,
 ): Decision {
+  if ("owner" in target) {
+    return { status: "unassigned", rule, reason: "owner targets are resolved in route()" };
+  }
   if ("rep" in target) {
     const rep = config.reps.find((r) => r.id === target.rep);
     if (!rep) return { status: "unassigned", rule, reason: `rep "${target.rep}" does not exist` };
@@ -123,20 +172,31 @@ function resolveTarget(
 
 /**
  * Route one lead: drop rules, then routes top to bottom (first match wins),
- * then the fallback. A matched route whose target can't take the lead
- * (everyone away or capped) falls through to the fallback.
+ * then the fallback. A matched route whose pool can't take the lead
+ * (everyone away or capped) falls through to the fallback. A Salesforce-owner
+ * route with no usable owner doesn't count as a match: the next route is tried.
  */
 export function route(config: Config, lead: Lead, state: State, now: Date): Decision {
-  const dropped = dropReason(config, lead.fields);
+  const dropped = dropReason(config, lead);
   if (dropped) return { status: "dropped", rule: dropped };
 
   for (const r of config.routes ?? []) {
-    if (!matchesWhen(lead.fields, r.when)) continue;
+    if (!matchesWhen(lead, r.when)) continue;
+    if ("owner" in r.assign) {
+      const owned = ownerDecision(config, lead, r.assign.owner, r.assign.if_not_rep, `route: ${r.name}`, now);
+      if (owned) return owned;
+      continue;
+    }
     const decision = resolveTarget(config, r.assign, `route: ${r.name}`, state, now);
     if (decision.status === "routed") return decision;
     break;
   }
-  const fallback = resolveTarget(config, config.fallback, "fallback", state, now);
+  const fb = config.fallback;
+  if ("owner" in fb) {
+    const owned = ownerDecision(config, lead, fb.owner, fb.if_not_rep, "fallback", now);
+    return owned ?? { status: "unassigned", rule: "fallback", reason: "no usable Salesforce owner" };
+  }
+  const fallback = resolveTarget(config, fb, "fallback", state, now);
   if (fallback.status === "unassigned") {
     return { ...fallback, reason: `fallback can't take it: ${fallback.reason}` };
   }

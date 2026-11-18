@@ -29,8 +29,38 @@ Show this table, then ask which they want.
 
 ## 2. Do you use a CRM?
 
-- **Salesforce:** account and owner lookups are coming (log in through a browser tab, Baton reads who owns each account). Until then, set it up as below.
-- **Any other CRM, or none:** say this clearly:
+### Salesforce
+
+Baton looks each lead up in Salesforce before routing (read only: it never writes to Salesforce). That lets leads go to whoever already owns the account, contact or lead, and lets rules use account fields like industry.
+
+1. **Edition check.** Salesforce's API is included in Enterprise, Unlimited and Developer editions. Professional Edition needs the API add-on bought from Salesforce. Ask which edition they have, and stop here if it's Professional without the add-on.
+2. **Install the Baton app once.** Their Salesforce admin installs the Baton package from its install link. (The package isn't released yet: until it is, Salesforce lookups aren't available to new orgs.)
+3. **Log in.** Run `npx -y baton-router@latest connect salesforce`. A browser tab opens: they log in and click **Allow**. For a sandbox add `--login-url https://test.salesforce.com`. Baton reads as whoever logs in, so recommend a user who can see every account, contact and lead (an admin, or a dedicated integration user).
+4. `npx -y baton-router@latest salesforce check` confirms the connection.
+
+Then, later in the interview:
+- **Reps (step 5):** `salesforce users` lists active users with their emails, so they can pick reps instead of typing them.
+- **Existing owner (step 7):** ask whether leads should go to whoever already owns them in Salesforce (recommend yes, as the first route), and in what order to check owners. Recommend account owner, then contact owner, then lead owner. That's `assign: { owner: [account, contact, lead], if_not_rep: skip }`.
+  - **The owner isn't one of their Baton reps** (left, or in another team): `skip` moves on to the next route (recommended), `route_to_owner` sends it to them anyway.
+  - Queues, inactive users and reps marked away are always passed over.
+- **Account fields in rules (step 7):** `salesforce fields` lists them. Each one used in a rule (`field: account.Industry`) must be listed under `crm.account_fields`.
+- **Matching accounts:** Baton matches the lead's email domain to the account's **Website** field (`www`, `https://` and paths don't matter, and `jo@eu.acme.com` matches `acme.com`). If they keep the domain in another field, set `crm.account_domain_field`. If several accounts share a domain, use the `oldest` (recommended) or `newest`.
+
+```yaml
+crm:
+  type: salesforce
+  account_fields: [Industry]
+  multiple_accounts: oldest
+```
+
+The webhook then also carries what Baton found, so their tools can update the right records:
+`"salesforce": { "account": { "id": "001...", "name": "Acme" }, "contact_id": null, "lead_id": "00Q..." }`
+
+If Salesforce is down when a lead comes in, the lead waits for the next run rather than being routed without the lookup.
+
+### Any other CRM, or none
+
+Say this clearly:
 
 > **Baton can't look up accounts in your CRM.** It can't check who owns an account or read account fields. It routes using your form answers and round robin only. To get leads into your CRM, use the webhook: here's what you'll get for every lead.
 

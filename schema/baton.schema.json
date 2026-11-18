@@ -5,25 +5,56 @@
   "description": "Baton lead router configuration. Written by the setup interview (SETUP.md); safe to edit by hand.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "run", "inbox", "reps", "fallback", "webhook"],
+  "required": [
+    "version",
+    "run",
+    "inbox",
+    "reps",
+    "fallback",
+    "webhook"
+  ],
   "properties": {
-    "version": { "const": 1 },
+    "version": {
+      "const": 1
+    },
     "run": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["mode", "every_minutes"],
+      "required": [
+        "mode",
+        "every_minutes"
+      ],
       "properties": {
-        "mode": { "enum": ["laptop"], "description": "Where Baton runs. Only 'laptop' (free, on a timer) exists today." },
-        "every_minutes": { "type": "integer", "minimum": 1, "maximum": 1440, "description": "How often the laptop checks the inbox." }
+        "mode": {
+          "enum": [
+            "laptop"
+          ],
+          "description": "Where Baton runs. Only 'laptop' (free, on a timer) exists today."
+        },
+        "every_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1440,
+          "description": "How often the laptop checks the inbox."
+        }
       }
     },
     "inbox": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "script_url"],
+      "required": [
+        "type",
+        "script_url"
+      ],
       "properties": {
-        "type": { "const": "google_sheet" },
-        "script_url": { "type": "string", "pattern": "^https://script\\.google\\.com/", "description": "The Sheet's Apps Script web app URL (ends in /exec)." }
+        "type": {
+          "const": "google_sheet"
+        },
+        "script_url": {
+          "type": "string",
+          "pattern": "^https://script\\.google\\.com/",
+          "description": "The Sheet's Apps Script web app URL (ends in /exec)."
+        }
       }
     },
     "reps": {
@@ -32,13 +63,33 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "name", "email"],
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$" },
-          "name": { "type": "string", "minLength": 1 },
-          "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
-          "booking_link": { "type": "string", "pattern": "^https?://" },
-          "away_until": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "Skipped by pools through this date (YYYY-MM-DD)." }
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "email": {
+            "type": "string",
+            "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+          },
+          "booking_link": {
+            "type": "string",
+            "pattern": "^https?://"
+          },
+          "away_until": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Skipped by pools through this date (YYYY-MM-DD)."
+          }
         }
       }
     },
@@ -47,12 +98,36 @@
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["reps", "distribution"],
+        "required": [
+          "reps",
+          "distribution"
+        ],
         "properties": {
-          "reps": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-          "distribution": { "enum": ["even", "weighted"] },
-          "weights": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
-          "daily_cap": { "type": "integer", "minimum": 1, "description": "Most leads one rep gets from this pool per day." }
+          "reps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "distribution": {
+            "enum": [
+              "even",
+              "weighted"
+            ]
+          },
+          "weights": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "daily_cap": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Most leads one rep gets from this pool per day."
+          }
         }
       }
     },
@@ -60,15 +135,34 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "personal_email": { "type": "boolean", "description": "Drop gmail.com, yahoo.com and other personal mailboxes." },
-        "domains": { "type": "array", "items": { "type": "string" }, "description": "Drop these email domains (and their subdomains), e.g. competitors." },
+        "personal_email": {
+          "type": "boolean",
+          "description": "Drop gmail.com, yahoo.com and other personal mailboxes."
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Drop these email domains (and their subdomains), e.g. competitors."
+        },
         "rules": {
           "type": "array",
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "when"],
-            "properties": { "name": { "type": "string" }, "when": { "$ref": "#/definitions/when" } }
+            "required": [
+              "name",
+              "when"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "when": {
+                "$ref": "#/definitions/when"
+              }
+            }
           }
         }
       }
@@ -79,41 +173,168 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "assign"],
+        "required": [
+          "name",
+          "assign"
+        ],
         "properties": {
-          "name": { "type": "string" },
-          "when": { "$ref": "#/definitions/when" },
-          "assign": { "$ref": "#/definitions/target" }
+          "name": {
+            "type": "string"
+          },
+          "when": {
+            "$ref": "#/definitions/when"
+          },
+          "assign": {
+            "$ref": "#/definitions/target"
+          }
         }
       }
     },
-    "fallback": { "$ref": "#/definitions/target" },
+    "fallback": {
+      "$ref": "#/definitions/target"
+    },
     "webhook": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["url"],
-      "properties": { "url": { "type": "string", "pattern": "^https?://" } }
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^https?://"
+        }
+      }
+    },
+    "crm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "Look up the lead in Salesforce before routing. Log in with: baton-router connect salesforce",
+      "properties": {
+        "type": {
+          "const": "salesforce"
+        },
+        "account_domain_field": {
+          "type": "string",
+          "description": "Account field with the company website or domain. Default: Website."
+        },
+        "account_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Account fields rules can use as account.<Field>."
+        },
+        "multiple_accounts": {
+          "enum": [
+            "oldest",
+            "newest"
+          ],
+          "description": "Several accounts share the lead's domain: use the oldest or newest. Default: oldest."
+        }
+      }
     }
   },
   "definitions": {
     "target": {
       "oneOf": [
-        { "type": "object", "additionalProperties": false, "required": ["rep"], "properties": { "rep": { "type": "string" } } },
-        { "type": "object", "additionalProperties": false, "required": ["pool"], "properties": { "pool": { "type": "string" } } }
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rep"
+          ],
+          "properties": {
+            "rep": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "pool"
+          ],
+          "properties": {
+            "pool": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "owner",
+            "if_not_rep"
+          ],
+          "description": "Salesforce only: the existing owner of the lead's account, contact or lead, tried in this order.",
+          "properties": {
+            "owner": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "account",
+                  "contact",
+                  "lead"
+                ]
+              }
+            },
+            "if_not_rep": {
+              "enum": [
+                "route_to_owner",
+                "skip"
+              ],
+              "description": "The owner isn't one of your reps: send it to them anyway, or skip to the next route."
+            }
+          }
+        }
       ]
     },
     "condition": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["field"],
+      "required": [
+        "field"
+      ],
       "minProperties": 2,
       "properties": {
-        "field": { "type": "string", "description": "A form field name (case, spaces and underscores ignored), or email_domain." },
-        "equals": { "type": ["string", "number", "boolean"] },
-        "in": { "type": "array", "items": { "type": ["string", "number", "boolean"] } },
-        "contains": { "type": "string" },
-        "gte": { "type": "number" },
-        "lte": { "type": "number" }
+        "field": {
+          "type": "string",
+          "description": "A form field name (case, spaces and underscores ignored), email_domain, or account.<Field> with Salesforce."
+        },
+        "equals": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        "in": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "contains": {
+          "type": "string"
+        },
+        "gte": {
+          "type": "number"
+        },
+        "lte": {
+          "type": "number"
+        }
       }
     },
     "when": {
@@ -121,8 +342,18 @@
       "additionalProperties": false,
       "minProperties": 1,
       "properties": {
-        "all": { "type": "array", "items": { "$ref": "#/definitions/condition" } },
-        "any": { "type": "array", "items": { "$ref": "#/definitions/condition" } }
+        "all": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/condition"
+          }
+        },
+        "any": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/condition"
+          }
+        }
       }
     }
   }

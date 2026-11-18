@@ -2,7 +2,7 @@
 // route them, send the webhook, mark the rows. Every decision is saved before
 // anything leaves the machine, so a crash mid-run never routes a lead twice.
 
-import type { Config, Decision, Lead, OutboxItem, Processed, State, WebhookPayload } from "./types.ts";
+import type { Config, CrmContext, Decision, Lead, OutboxItem, Processed, State, WebhookPayload } from "./types.ts";
 import { findCompany, findEmail, findName } from "./fields.ts";
 import { pruneDaily, recordAssignment, route } from "./engine.ts";
 import type { MarkRow, SheetInbox } from "../adapters/sheet.ts";
@@ -15,6 +15,8 @@ export interface RunDeps {
   loadState: () => State;
   saveState: (state: State) => void;
   appendLog: (lines: LogLine[]) => void;
+  /** Looks the lead up in the CRM before routing, when one is connected. */
+  lookup?: (lead: Lead) => Promise<CrmContext>;
   now?: () => Date;
   newId?: () => string;
 }
@@ -28,6 +30,8 @@ export interface RunSummary {
   webhooks_waiting: number;
   marked: number;
   mark_problems: string[];
+  /** Leads left for the next run because the CRM lookup failed. */
+  lookup_errors: string[];
 }
 
 const MAX_PROCESSED = 10_000;
@@ -51,6 +55,15 @@ export function buildPayload(lead: Lead, decision: Decision, batonId: string, at
     routed_to: rep ? { name: rep.name, email: rep.email, ...(rep.booking_link ? { booking_link: rep.booking_link } : {}) } : null,
     rule: decision.rule,
     routed_at: at.toISOString(),
+    ...(lead.crm
+      ? {
+          salesforce: {
+            account: lead.crm.account ? { id: lead.crm.account.id, name: lead.crm.account.name } : null,
+            contact_id: lead.crm.contact?.id ?? null,
+            lead_id: lead.crm.lead?.id ?? null,
+          },
+        }
+      : {}),
   };
 }
 
@@ -60,7 +73,7 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
   const state = deps.loadState();
   const summary: RunSummary = {
     read: 0, routed: 0, dropped: 0, unassigned: 0,
-    webhooks_sent: 0, webhooks_waiting: 0, marked: 0, mark_problems: [],
+    webhooks_sent: 0, webhooks_waiting: 0, marked: 0, mark_problems: [], lookup_errors: [],
   };
 
   // 1. Read and decide. Nothing leaves the machine until the decisions are saved.
@@ -69,6 +82,15 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
   const logLines: LogLine[] = [];
   for (const lead of leads) {
     if (state.processed[lead.key]) continue; // decided on an earlier run; just needs marking
+    if (deps.lookup) {
+      try {
+        lead.crm = await deps.lookup(lead);
+      } catch (e) {
+        // Routing without what Salesforce knows could send an owned account to the wrong rep: wait and retry.
+        summary.lookup_errors.push(`${findEmail(lead.fields) ?? lead.key}: ${(e as Error).message}`);
+        continue;
+      }
+    }
     const at = now();
     const decision = route(deps.config, lead, state, at);
     recordAssignment(deps.config, state, decision, at);
@@ -93,6 +115,7 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
       routed_to: payload.routed_to?.email ?? null,
       rule: decision.rule,
       ...(decision.status === "unassigned" ? { reason: decision.reason } : {}),
+      ...(lead.crm ? { salesforce: { account: lead.crm.account?.name, contact: lead.crm.contact?.id, lead: lead.crm.lead?.id } } : {}),
     });
   }
   pruneDaily(state, now());
