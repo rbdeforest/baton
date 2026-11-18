@@ -1,0 +1,34 @@
+# Example: two AEs share enterprise leads, two SDRs share the rest.
+version: 1
+run:
+  mode: laptop
+  every_minutes: 5
+inbox:
+  type: google_sheet
+  script_url: https://script.google.com/macros/s/EXAMPLE/exec
+reps:
+  - { id: ana, name: Ana Ortiz, email: ana@example.com }
+  - { id: ben, name: Ben Cole, email: ben@example.com }
+  - { id: cy, name: Cy Park, email: cy@example.com }
+  - { id: dee, name: Dee Shah, email: dee@example.com }
+pools:
+  enterprise:
+    reps: [ana, ben]
+    distribution: even
+  sdr:
+    reps: [cy, dee]
+    distribution: weighted
+    weights: { cy: 2, dee: 1 }
+    daily_cap: 20
+drop:
+  personal_email: true
+  domains: [competitor.com]
+routes:
+  - name: Enterprise (1,000+ employees)
+    when:
+      all:
+        - { field: company size, gte: 1000 }
+    assign: { pool: enterprise }
+fallback: { pool: sdr }
+webhook:
+  url: https://hooks.example.com/baton
