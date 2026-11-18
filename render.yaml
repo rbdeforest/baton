@@ -1,0 +1,20 @@
+# "Deploy to Render": runs the published Baton image with a disk for its
+# logins, counts and log. Render asks for the three settings below.
+services:
+  - type: web
+    name: baton
+    runtime: image
+    image:
+      url: ghcr.io/rbdeforest/baton:latest
+    healthCheckPath: /health
+    disk:
+      name: baton-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: BATON_YAML_B64
+        sync: false
+      - key: BATON_SECRETS
+        sync: false
+      - key: TZ
+        sync: false
