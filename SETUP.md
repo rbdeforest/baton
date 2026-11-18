@@ -40,6 +40,8 @@ Show them the payload from step 10.
 
 On option 3, form leads wait in a Google Sheet until the computer picks them up. A small script pasted into the Sheet gives it a private web address. No Google login or Google Cloud project needed.
 
+Ask first: **is this a personal Google account (gmail.com) or a company one?** If it's a company account, warn them up front: many companies block public scripts, and then this free version can't reach the Sheet. They'll find out at step 5 below (if **Who has access** offers only "Anyone within <company>", it's blocked). If it's blocked, their options are a Sheet in a personal Google account, asking their Google admin to allow it, or options 1 and 2 when available, which need no Sheet.
+
 1. Ask them to create a new Google Sheet (or pick an existing one their form tool already writes to) and tell you the tab name. Recommend a new Sheet with a tab called `Leads`.
 2. Make a folder for Baton (recommend `~/baton`) and run, in that folder:
    `npx -y baton-router@latest sheet-script --sheet "<tab name>"`
