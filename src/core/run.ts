@@ -67,6 +67,63 @@ export function buildPayload(lead: Lead, decision: Decision, batonId: string, at
   };
 }
 
+/**
+ * Route one lead and record everything about it in `state` (counts, the
+ * decision, the webhook waiting to go out). Mutates state; the caller saves it
+ * before anything leaves the machine.
+ */
+export function decide(
+  config: Config,
+  state: State,
+  lead: Lead,
+  at: Date,
+  batonId: string,
+): { decision: Decision; payload: WebhookPayload; logLine: LogLine } {
+  const decision = route(config, lead, state, at);
+  recordAssignment(config, state, decision, at);
+  const payload = buildPayload(lead, decision, batonId, at);
+  state.outbox.push({ id: batonId, payload, attempts: 0 });
+  state.processed[lead.key] = {
+    baton_id: batonId,
+    status: decision.status,
+    routed_to: decision.status === "routed" ? decision.rep.email : null,
+    rule: decision.rule,
+    routed_at: at.toISOString(),
+    marked: false,
+  };
+  const logLine: LogLine = {
+    at: at.toISOString(),
+    baton_id: batonId,
+    lead_key: lead.key,
+    email: payload.lead.email,
+    status: decision.status,
+    routed_to: payload.routed_to?.email ?? null,
+    rule: decision.rule,
+    ...(decision.status === "unassigned" ? { reason: decision.reason } : {}),
+    ...(lead.crm ? { salesforce: { account: lead.crm.account?.name, contact: lead.crm.contact?.id, lead: lead.crm.lead?.id } } : {}),
+  };
+  return { decision, payload, logLine };
+}
+
+/** Send every waiting webhook, oldest first; failures stay in the outbox. Returns how many went out. */
+export async function flushOutbox(state: State, send: (payload: WebhookPayload) => Promise<void>): Promise<number> {
+  const batch = [...state.outbox];
+  const failed: OutboxItem[] = [];
+  for (const item of batch) {
+    try {
+      await send(item.payload);
+    } catch (e) {
+      item.attempts += 1;
+      item.last_error = (e as Error).message;
+      failed.push(item);
+    }
+  }
+  // Anything queued while this batch was sending stays for the next flush.
+  const added = state.outbox.filter((i) => !batch.includes(i));
+  state.outbox = [...failed, ...added];
+  return batch.length - failed.length;
+}
+
 export async function runOnce(deps: RunDeps): Promise<RunSummary> {
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? newBatonId;
@@ -91,32 +148,9 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
         continue;
       }
     }
-    const at = now();
-    const decision = route(deps.config, lead, state, at);
-    recordAssignment(deps.config, state, decision, at);
-    const batonId = newId();
-    const payload = buildPayload(lead, decision, batonId, at);
-    state.outbox.push({ id: batonId, payload, attempts: 0 });
-    state.processed[lead.key] = {
-      baton_id: batonId,
-      status: decision.status,
-      routed_to: decision.status === "routed" ? decision.rep.email : null,
-      rule: decision.rule,
-      routed_at: at.toISOString(),
-      marked: false,
-    };
+    const { decision, logLine } = decide(deps.config, state, lead, now(), newId());
     summary[decision.status] += 1;
-    logLines.push({
-      at: at.toISOString(),
-      baton_id: batonId,
-      lead_key: lead.key,
-      email: payload.lead.email,
-      status: decision.status,
-      routed_to: payload.routed_to?.email ?? null,
-      rule: decision.rule,
-      ...(decision.status === "unassigned" ? { reason: decision.reason } : {}),
-      ...(lead.crm ? { salesforce: { account: lead.crm.account?.name, contact: lead.crm.contact?.id, lead: lead.crm.lead?.id } } : {}),
-    });
+    logLines.push(logLine);
   }
   pruneDaily(state, now());
   trimProcessed(state);
@@ -124,19 +158,9 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
   deps.appendLog(logLines);
 
   // 2. Webhooks: everything waiting, oldest first. Failures stay for the next run.
-  const waiting: OutboxItem[] = [];
-  for (const item of state.outbox) {
-    try {
-      await deps.deliver(item.payload);
-      summary.webhooks_sent += 1;
-    } catch (e) {
-      item.attempts += 1;
-      item.last_error = (e as Error).message;
-      waiting.push(item);
-    }
-  }
-  state.outbox = waiting;
-  summary.webhooks_waiting = waiting.length;
+  const sent = await flushOutbox(state, deps.deliver);
+  summary.webhooks_sent = sent;
+  summary.webhooks_waiting = state.outbox.length;
   deps.saveState(state);
 
   // 3. Mark rows in the Sheet so they aren't read again.
@@ -164,7 +188,7 @@ export async function runOnce(deps: RunDeps): Promise<RunSummary> {
   return summary;
 }
 
-function trimProcessed(state: State): void {
+export function trimProcessed(state: State): void {
   const keys = Object.keys(state.processed);
   if (keys.length <= MAX_PROCESSED) return;
   const oldest = keys

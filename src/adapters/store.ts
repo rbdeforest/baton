@@ -9,6 +9,8 @@ import type { SalesforceCredentials } from "./salesforce.ts";
 export interface Secrets {
   sheet_secret?: string;
   webhook_secret?: string;
+  /** Server mode: the key form tools send to /hook. */
+  hook_secret?: string;
   salesforce?: SalesforceCredentials;
 }
 
@@ -64,6 +66,10 @@ export class FileStore {
 
   loadSecrets(): Secrets {
     return this.readJson<Secrets>("secrets.json", {});
+  }
+
+  hasSecrets(): boolean {
+    return existsSync(this.path("secrets.json"));
   }
 
   saveSecrets(secrets: Secrets): void {

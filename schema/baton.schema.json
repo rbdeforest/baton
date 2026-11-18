@@ -8,7 +8,6 @@
   "required": [
     "version",
     "run",
-    "inbox",
     "reps",
     "fallback",
     "webhook"
@@ -18,26 +17,41 @@
       "const": 1
     },
     "run": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "mode",
-        "every_minutes"
-      ],
-      "properties": {
-        "mode": {
-          "enum": [
-            "laptop"
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "every_minutes"
           ],
-          "description": "Where Baton runs. Only 'laptop' (free, on a timer) exists today."
+          "properties": {
+            "mode": {
+              "const": "laptop",
+              "description": "Free, on your computer: a background job collects leads from a Google Sheet every few minutes."
+            },
+            "every_minutes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1440,
+              "description": "How often the laptop checks the inbox."
+            }
+          }
         },
-        "every_minutes": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1440,
-          "description": "How often the laptop checks the inbox."
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "const": "server",
+              "description": "Always on (baton-router serve): forms post straight to Baton and leads route instantly."
+            }
+          }
         }
-      }
+      ]
     },
     "inbox": {
       "type": "object",
@@ -236,6 +250,36 @@
           "description": "Several accounts share the lead's domain: use the oldest or newest. Default: oldest."
         }
       }
+    },
+    "server": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_url",
+        "form_origins",
+        "rate_limit_per_minute"
+      ],
+      "properties": {
+        "public_url": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "Baton's public address, e.g. https://baton.acme.com. The form snippet posts here."
+        },
+        "form_origins": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^https?://[^/]+$"
+          },
+          "description": "Websites allowed to post leads from a browser, e.g. https://www.acme.com (no trailing slash)."
+        },
+        "rate_limit_per_minute": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Most leads one IP address can send per minute."
+        }
+      }
     }
   },
   "definitions": {
@@ -356,5 +400,45 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "run": {
+            "properties": {
+              "mode": {
+                "const": "laptop"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "inbox"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "run": {
+            "properties": {
+              "mode": {
+                "const": "server"
+              }
+            },
+            "type": "object"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "server"
+        ]
+      }
+    }
+  ]
 }

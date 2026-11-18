@@ -15,6 +15,7 @@ import { installTimer, timerInstalled, uninstallTimer } from "./timer.ts";
 import { connectSalesforce } from "./connect.ts";
 import { API_VERSION, DEFAULT_CLIENT_ID, SalesforceClient, lookup } from "../adapters/salesforce.ts";
 import { findEmail } from "../core/fields.ts";
+import { createBatonServer } from "../server/server.ts";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const VERSION = (JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string }).version;
@@ -32,6 +33,11 @@ const HELP = `baton-router ${VERSION}: open-source lead router
   timer install|uninstall|status
   status                   Last run, today's counts, webhooks waiting
   log [--n 20]             Recent routing decisions
+
+  serve                    Run Baton as an always-on server (server mode)
+  hook-secret              The key form tools send to /hook (server mode)
+  secrets export           One line to copy the logins onto a new server
+                           (set it as BATON_SECRETS there; used once)
 
   connect salesforce       Log in to Salesforce in your browser
            [--login-url URL]  (sandbox: https://test.salesforce.com)
@@ -69,13 +75,21 @@ function crmLookup(config: Config, store: FileStore): ((lead: Lead) => ReturnTyp
   return (lead) => lookup(client, crm, findEmail(lead.fields));
 }
 
+/** The laptop's Google Sheet inbox, or a clear error in server mode. */
+function laptopOnly(config: Config, command: string): { script_url: string; every_minutes: number } {
+  if (config.run.mode !== "laptop" || !config.inbox) {
+    throw new Error(`"${command}" is for the laptop version. This baton.yaml runs as a server: use "baton-router serve".`);
+  }
+  return { script_url: config.inbox.script_url, every_minutes: config.run.every_minutes };
+}
+
 function requireSecret(store: FileStore, name: "sheet_secret" | "webhook_secret", fix: string): string {
   const value = store.loadSecrets()[name];
   if (!value) throw new Error(`no ${name.replace("_", " ")} yet. Run: baton-router ${fix}`);
   return value;
 }
 
-function ensureSecret(store: FileStore, name: "sheet_secret" | "webhook_secret"): string {
+function ensureSecret(store: FileStore, name: "sheet_secret" | "webhook_secret" | "hook_secret"): string {
   const secrets = store.loadSecrets();
   if (!secrets[name]) {
     secrets[name] = randomSecret();
@@ -155,14 +169,15 @@ async function main(argv: string[]): Promise<number> {
 
     case "snippet": {
       const config = loadConfig(configPath);
-      const js = readFileSync(join(PACKAGE_ROOT, "snippet", "baton.js"), "utf8").replace("__BATON_INBOX__", config.inbox.script_url);
+      const target = config.run.mode === "server" ? `${config.server!.public_url.replace(/\/$/, "")}/lead` : laptopOnly(config, "snippet").script_url;
+      const js = readFileSync(join(PACKAGE_ROOT, "snippet", "baton.js"), "utf8").replace("__BATON_INBOX__", target);
       console.log(`<!-- Baton: add data-baton to the <form> tag, and put this before </body> -->\n<script>\n${js.trim()}\n</script>`);
       return 0;
     }
 
     case "check": {
       const config = loadConfig(configPath);
-      const inbox = new SheetInbox(config.inbox.script_url, requireSecret(store, "sheet_secret", "sheet-script"));
+      const inbox = new SheetInbox(laptopOnly(config, "check").script_url, requireSecret(store, "sheet_secret", "sheet-script"));
       const sheet = await inbox.ping();
       ensureSecret(store, "webhook_secret");
       console.log(`baton.yaml is valid and the Google Sheet answers (tab "${sheet}").`);
@@ -171,7 +186,7 @@ async function main(argv: string[]): Promise<number> {
 
     case "run": {
       const config = loadConfig(configPath);
-      const inbox = new SheetInbox(config.inbox.script_url, requireSecret(store, "sheet_secret", "sheet-script"));
+      const inbox = new SheetInbox(laptopOnly(config, "run").script_url, requireSecret(store, "sheet_secret", "sheet-script"));
       const webhookSecret = ensureSecret(store, "webhook_secret");
       const startedAt = new Date().toISOString();
       const summary = await withLock(store, () =>
@@ -205,10 +220,10 @@ async function main(argv: string[]): Promise<number> {
     case "timer": {
       const sub = args[0];
       if (sub === "install") {
-        const config = loadConfig(configPath);
+        const { every_minutes } = laptopOnly(loadConfig(configPath), "timer install");
         requireSecret(store, "sheet_secret", "sheet-script");
         store.writeFile(".keep", "");
-        console.log("Installed: " + installTimer({ configPath, everyMinutes: config.run.every_minutes, logPath: join(store.dir, "timer.log") }, VERSION));
+        console.log("Installed: " + installTimer({ configPath, everyMinutes: every_minutes, logPath: join(store.dir, "timer.log") }, VERSION));
         console.log("It runs whenever this computer is awake. Remove it with: baton-router timer uninstall");
         return 0;
       }
@@ -243,6 +258,58 @@ async function main(argv: string[]): Promise<number> {
       for (const l of store.readLog().slice(-n)) {
         console.log(`${l.at}  ${l.email ?? "(no email)"} -> ${l.status}${l.routed_to ? ` ${l.routed_to}` : ""}  [${l.rule}]${l.reason ? ` (${l.reason})` : ""}`);
       }
+      return 0;
+    }
+
+    case "serve": {
+      const config = loadConfig(configPath);
+      if (config.run.mode !== "server" || !config.server) throw new Error('baton.yaml must have run: { mode: server } and a server section to use "serve"');
+      // A new server gets its logins once from BATON_SECRETS; after that the saved copy wins,
+      // because Salesforce replaces its login key on every refresh.
+      if (!store.hasSecrets() && process.env.BATON_SECRETS) {
+        store.saveSecrets(JSON.parse(Buffer.from(process.env.BATON_SECRETS, "base64").toString("utf8")));
+        console.log("Saved the logins from BATON_SECRETS. You can remove that setting now.");
+      }
+      const webhookSecret = ensureSecret(store, "webhook_secret");
+      const { server, drain, stop } = createBatonServer({
+        config,
+        hookSecret: ensureSecret(store, "hook_secret"),
+        loadState: () => store.loadState(),
+        saveState: (s) => store.saveState(s),
+        appendLog: (lines) => store.appendLog(lines),
+        deliver: (payload) => deliver(config.webhook.url, webhookSecret, payload),
+        lookup: crmLookup(config, store),
+        version: VERSION,
+      });
+      const port = Number(process.env.PORT ?? arg(args, "--port") ?? 8080);
+      server.listen(port, "0.0.0.0", () => {
+        console.log(`Baton ${VERSION} is running on port ${port}. Forms post to ${config.server!.public_url.replace(/\/$/, "")}/lead; form tools to /hook.`);
+        console.log(`Saving data in ${store.dir}: this folder must survive restarts.`);
+      });
+      await new Promise<void>((resolve) => {
+        const shutdown = () => {
+          stop();
+          server.close();
+          drain().finally(resolve);
+        };
+        process.once("SIGTERM", shutdown);
+        process.once("SIGINT", shutdown);
+      });
+      return 0;
+    }
+
+    case "hook-secret": {
+      const config = loadConfig(configPath);
+      const url = config.server ? `${config.server.public_url.replace(/\/$/, "")}/hook` : "(your Baton address)/hook";
+      console.log(`Send leads to: POST ${url}\nWith header: Authorization: Bearer ${ensureSecret(store, "hook_secret")}`);
+      return 0;
+    }
+
+    case "secrets": {
+      if (args[0] !== "export") throw new Error("use: secrets export");
+      ensureSecret(store, "webhook_secret");
+      ensureSecret(store, "hook_secret");
+      console.log(Buffer.from(JSON.stringify(store.loadSecrets())).toString("base64"));
       return 0;
     }
 

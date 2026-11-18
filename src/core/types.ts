@@ -61,8 +61,11 @@ export interface Route {
 
 export interface Config {
   version: 1;
-  run: { mode: "laptop"; every_minutes: number };
-  inbox: { type: "google_sheet"; script_url: string };
+  run: { mode: "laptop"; every_minutes: number } | { mode: "server" };
+  /** Laptop only: where form leads wait until the timer collects them. */
+  inbox?: { type: "google_sheet"; script_url: string };
+  /** Server only. */
+  server?: ServerConfig;
   reps: Rep[];
   pools?: Record<string, Pool>;
   drop?: { personal_email?: boolean; domains?: string[]; rules?: DropRule[] };
@@ -70,6 +73,15 @@ export interface Config {
   fallback: Target;
   webhook: { url: string };
   crm?: SalesforceConfig;
+}
+
+export interface ServerConfig {
+  /** Baton's public address, e.g. https://baton.acme.com. The form snippet posts here. */
+  public_url: string;
+  /** Websites allowed to post leads from a browser, e.g. https://www.acme.com */
+  form_origins: string[];
+  /** Most leads one IP address can send per minute. */
+  rate_limit_per_minute: number;
 }
 
 export interface SalesforceConfig {
@@ -119,6 +131,16 @@ export interface PoolCounter {
 }
 
 /** Everything Baton remembers between runs. */
+/** A lead whose Salesforce lookup failed, retried every minute in server mode. */
+export interface PendingLead {
+  lead: Lead;
+  /** Already given to the form, so the decision keeps it. */
+  baton_id: string;
+  received_at: string;
+  attempts: number;
+  last_error: string;
+}
+
 export interface State {
   /** pool -> rep -> running count, for fairness. */
   pools: Record<string, Record<string, PoolCounter>>;
@@ -128,6 +150,8 @@ export interface State {
   processed: Record<string, Processed>;
   /** Webhook payloads not yet delivered. */
   outbox: OutboxItem[];
+  /** Server mode: leads waiting for Salesforce to answer. */
+  pending?: PendingLead[];
 }
 
 export interface Processed {

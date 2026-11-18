@@ -25,7 +25,9 @@ Show this table, then ask which they want.
 | Who keeps it running | Us | You | Stops while the computer sleeps |
 | Effort | Least | Most (Docker) | One command |
 
-**Today only option 3 is available.** Options 1 and 2 are coming. If they want 1 or 2, tell them plainly, and offer to set up option 3 now: the same `baton.yaml` moves to options 1 and 2 later without starting over.
+**Today options 2 and 3 are available.** Option 1 is coming: if they want it, tell them plainly and offer option 2 or 3 now. The same `baton.yaml` moves between options without starting over.
+
+On **option 2**, skip steps 3 and 4 (no Google Sheet) and follow "Option 2: running Baton on your own server" below before step 11.
 
 ## 2. Do you use a CRM?
 
@@ -167,9 +169,47 @@ Every lead (routed, dropped or unassigned) is sent as:
 - Each request has an `X-Baton-Signature: sha256=<hex>` header: an HMAC-SHA256 of the raw body using their webhook secret (`npx -y baton-router@latest webhook-secret` shows it). Checking it is optional but recommended.
 - If the webhook is down, Baton keeps the result and retries on every run until it's delivered.
 
+## Option 2: running Baton on your own server
+
+Baton runs as an always-on web server (`baton-router serve`). Forms post straight to it and each lead routes within about a second.
+
+**What their server needs:**
+- **Node.js 20+ or Docker.** Ask which they have. Any cloud server, Render, Railway, Fly, Kubernetes and so on all work.
+- **A public HTTPS address**, for example `https://baton.theirco.com`. Most hosts give one.
+- **A folder that survives restarts.** Baton keeps its Salesforce login, counts and log there (Salesforce replaces its login key on every refresh, so a server that forgets its files gets disconnected). On Docker: a volume mounted at `/data`. Some free hosting tiers don't keep files: warn them.
+- **The time zone** for daily caps and away dates: set `TZ` (for example `America/New_York`) on the server. Without it, days reset at midnight UTC.
+
+**Settings** (in place of `inbox`):
+
+```yaml
+run: { mode: server }
+server:
+  public_url: https://baton.theirco.com
+  form_origins: [https://www.theirco.com]
+  rate_limit_per_minute: 10
+```
+
+- `form_origins`: every website address their forms live on (scheme + host, no path). Browsers posting from anywhere else are refused.
+- `rate_limit_per_minute`: most leads one visitor's IP address can send per minute. Recommend 10.
+
+**Leads in:**
+- **Website forms:** `npx -y baton-router@latest snippet` prints the `<script>` for their pages (add `data-baton` to the `<form>` tag). It posts to `<public_url>/lead`.
+- **Form tools** (HubSpot forms, Typeform, Zapier, n8n): `npx -y baton-router@latest hook-secret` shows the address (`<public_url>/hook`) and the key to send as `Authorization: Bearer <key>`. JSON or form-encoded fields both work. Optionally include `submission_id` so retries aren't routed twice.
+
+**Getting it onto the server:**
+1. Finish this interview on their own computer, in their Baton folder (including `connect salesforce`, which needs a browser).
+2. Run `npx -y baton-router@latest secrets export`. It prints one line holding Baton's keys and the Salesforce login. On the server, set it as the setting `BATON_SECRETS`. Baton copies it into its folder the first time it starts, and uses its own saved copy after that. Treat it like a password.
+3. Copy `baton.yaml` to the server: with Docker into the `/data` volume, otherwise into the folder Baton runs from.
+4. Start it:
+   - **Docker:** build the image from the Baton repository (`docker build -t baton .`), then run it with the volume, `PORT` and `BATON_SECRETS`.
+   - **Node:** `npx -y baton-router@latest serve` in that folder, kept running by their usual process manager (systemd, pm2 or their host's start command).
+5. Check `https://<public_url>/health` answers `{"ok":true,...}`, then go to step 12.
+
+If Salesforce is down when a lead arrives, the form still gets its answer, and the lead routes as soon as Salesforce answers again (Baton retries every minute).
+
 ## 11. Write baton.yaml
 
-How often should the computer check for new leads? Recommend every 5 minutes.
+On option 3: how often should the computer check for new leads? Recommend every 5 minutes. (On option 2, use the server settings above instead of `run`/`inbox`.)
 
 Write `baton.yaml` in their Baton folder. The schema is at `schema/baton.schema.json` in the package. Example:
 
@@ -214,6 +254,8 @@ Write 5 made-up leads that exercise their rules (one per route, one for the fall
 Nothing is saved and no webhook is sent. Ask them to confirm each result is what they expect. Fix the rules until it is.
 
 ## 13. Go live
+
+On option 2: put the snippet on their pages and point their form tools at `/hook`, submit one real test, and check their webhook tool received it. The steps below are for option 3.
 
 1. `npx -y baton-router@latest timer install`. It routes every few minutes whenever the computer is awake, with no window open. Remove it any time with `timer uninstall`.
 2. If they use the HTML snippet, add it to the page now (step 4).

@@ -6,6 +6,11 @@
 (function () {
   var INBOX = "__BATON_INBOX__";
   var SKIP = /pass(word)?|card|cvc|cvv|ssn/i;
+  // Lets Baton ignore the same submission sent twice.
+  function submissionId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
   document.addEventListener(
     "submit",
     function (e) {
@@ -23,7 +28,7 @@
           mode: "no-cors",
           keepalive: true,
           headers: { "Content-Type": "text/plain" },
-          body: JSON.stringify({ fields: fields }),
+          body: JSON.stringify({ fields: fields, submission_id: submissionId() }),
         });
       } catch (err) {
         // Never break the customer's form.
