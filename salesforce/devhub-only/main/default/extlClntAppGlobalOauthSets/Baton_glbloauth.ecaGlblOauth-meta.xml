@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtlClntAppGlobalOauthSettings xmlns="http://soap.sforce.com/2006/04/metadata">
+    <callbackUrl>http://localhost:8749/callback</callbackUrl>
+    <externalClientApplication>Baton</externalClientApplication>
+    <isConsumerSecretOptional>true</isConsumerSecretOptional>
+    <isIntrospectAllTokens>false</isIntrospectAllTokens>
+    <isPkceRequired>true</isPkceRequired>
+    <isSecretRequiredForRefreshToken>false</isSecretRequiredForRefreshToken>
+    <label>Baton_glbloauth</label>
+</ExtlClntAppGlobalOauthSettings>

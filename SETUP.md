@@ -34,7 +34,7 @@ Show this table, then ask which they want.
 Baton looks each lead up in Salesforce before routing (read only: it never writes to Salesforce). That lets leads go to whoever already owns the account, contact or lead, and lets rules use account fields like industry.
 
 1. **Edition check.** Salesforce's API is included in Enterprise, Unlimited and Developer editions. Professional Edition needs the API add-on bought from Salesforce. Ask which edition they have, and stop here if it's Professional without the add-on.
-2. **Install the Baton app once.** Their Salesforce admin installs the Baton package from its install link. (The package isn't released yet: until it is, Salesforce lookups aren't available to new orgs.)
+2. **Install the Baton app once.** Their Salesforce admin opens https://login.salesforce.com/packaging/installPackage.apexp?p0=04tak000000vCdxAAE (sandbox: replace `login` with `test`), chooses **Install for Admins Only**, and clicks **Install**. It contains only Baton's login app: no objects, fields or code.
 3. **Log in.** Run `npx -y baton-router@latest connect salesforce`. A browser tab opens: they log in and click **Allow**. For a sandbox add `--login-url https://test.salesforce.com`. Baton reads as whoever logs in, so recommend a user who can see every account, contact and lead (an admin, or a dedicated integration user).
 4. `npx -y baton-router@latest salesforce check` confirms the connection.
 

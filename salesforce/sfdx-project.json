@@ -1,0 +1,21 @@
+{
+  "packageDirectories": [
+    {
+      "versionName": "Baton",
+      "versionNumber": "0.1.0.NEXT",
+      "path": "baton-app",
+      "default": true,
+      "package": "Baton",
+      "versionDescription": "Baton open-source lead router: the Salesforce login app"
+    },
+    {
+      "path": "devhub-only"
+    }
+  ],
+  "name": "baton-salesforce",
+  "sourceApiVersion": "64.0",
+  "packageAliases": {
+    "Baton": "0Hoak0000007j21CAA",
+    "Baton@0.1.0-1": "04tak000000vCdxAAE"
+  }
+}

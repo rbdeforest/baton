@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExternalClientApplication xmlns="http://soap.sforce.com/2006/04/metadata">
+    <contactEmail>rbdeforest@gmail.com</contactEmail>
+    <description>Baton open-source lead router. Reads accounts, contacts and leads to route new form leads to the right rep. Never writes to Salesforce.</description>
+    <distributionState>Packaged</distributionState>
+    <isProtected>false</isProtected>
+    <label>Baton</label>
+    <orgScopedExternalApp>00Dak00001M3u25:Baton</orgScopedExternalApp>
+</ExternalClientApplication>

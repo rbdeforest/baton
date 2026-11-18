@@ -8,8 +8,8 @@ import { PERSONAL_DOMAINS, emailDomain } from "../core/fields.ts";
 export const API_VERSION = "v64.0";
 export const CALLBACK_PORT = 8749;
 export const CALLBACK_URL = `http://localhost:${CALLBACK_PORT}/callback`;
-/** Baton's published Salesforce app. Empty until the package is released; --client-id overrides it. */
-export const DEFAULT_CLIENT_ID = "";
+/** Baton's Salesforce app (salesforce/baton-app, shipped as the Baton package). --client-id overrides it. */
+export const DEFAULT_CLIENT_ID = "3MVG9JJwBBbcN47KIfVvZqwD42AR72BbbYGyezbxMnGL2FGiUNYZmtQ0_CDgffpWsnMSxTKgYfaoSUxeeGu1_";
 
 export interface SalesforceCredentials {
   login_url: string;
