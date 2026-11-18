@@ -71,9 +71,9 @@ export class SheetInbox {
     try {
       body = JSON.parse(text);
     } catch {
-      if (/accounts\.google\.com|<title>Sign[ -]in/i.test(text)) {
+      if (/accounts\.google\.com|<title>(Sign[ -]in|Access Denied)/i.test(text)) {
         throw new Error(
-          'Google asked for a sign-in instead of running the Sheet script. Redeploy it with "Who has access: Anyone". ' +
+          'Google asked for a sign-in instead of running the Sheet script. Redeploy it with "Who has access: Anyone" (not "Anyone with Google account"), and authorize it once: in the Apps Script editor, pick doGet and click Run. ' +
             "If that option isn't offered, your company's Google Workspace blocks it: use a Sheet in a personal Google account instead.",
         );
       }

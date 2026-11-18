@@ -47,9 +47,9 @@ On option 3, form leads wait in a Google Sheet until the computer picks them up.
 3. Walk them through, one step at a time:
    1. In the Sheet: **Extensions > Apps Script**.
    2. Delete what's in the editor, paste the whole contents of `.baton/baton-inbox.gs`, and click **Save**.
-   3. Click **Deploy > New deployment**. Click the gear next to "Select type" and choose **Web app**.
-   4. Set **Execute as: Me** and **Who has access: Anyone**. Click **Deploy**.
-   5. Google asks them to authorize: click through (it's their own script, so "Advanced > Go to project" is expected).
+   3. **Authorize it:** in the bar above the code, pick **doGet** in the function dropdown and click **Run**. Google asks for permission: choose their account, then **Advanced > Go to (project name)**, then **Allow**. The warning is expected for their own script. Skipping this makes Google answer "Access Denied" later.
+   4. Click **Deploy > New deployment**. Click the gear next to "Select type" and choose **Web app**.
+   5. Set **Execute as: Me** and **Who has access: Anyone** (not "Anyone with Google account"). Click **Deploy**.
    6. Copy the **Web app URL** (ends in `/exec`) and give it to you.
 
 If **Who has access** doesn't offer plain **Anyone** (only "Anyone within <company>"), their company's Google Workspace blocks public scripts, and Baton can't reach it. Use a Sheet in a personal Google account instead, or ask their Google admin.
