@@ -71,6 +71,12 @@ export class SheetInbox {
     try {
       body = JSON.parse(text);
     } catch {
+      if (/accounts\.google\.com|<title>Sign[ -]in/i.test(text)) {
+        throw new Error(
+          'Google asked for a sign-in instead of running the Sheet script. Redeploy it with "Who has access: Anyone". ' +
+            "If that option isn't offered, your company's Google Workspace blocks it: use a Sheet in a personal Google account instead.",
+        );
+      }
       throw new Error(
         `the Sheet script didn't answer with JSON (HTTP ${res.status}). Is the web app deployed with access "Anyone"? First bytes: ${text.slice(0, 120)}`,
       );

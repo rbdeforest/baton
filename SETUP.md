@@ -52,6 +52,8 @@ On option 3, form leads wait in a Google Sheet until the computer picks them up.
    5. Google asks them to authorize: click through (it's their own script, so "Advanced > Go to project" is expected).
    6. Copy the **Web app URL** (ends in `/exec`) and give it to you.
 
+If **Who has access** doesn't offer plain **Anyone** (only "Anyone within <company>"), their company's Google Workspace blocks public scripts, and Baton can't reach it. Use a Sheet in a personal Google account instead, or ask their Google admin.
+
 "Anyone" only lets forms add rows. Reading leads back out needs the secret, which only their Baton has.
 
 ## 4. How do leads get into the Sheet?
