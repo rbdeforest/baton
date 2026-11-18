@@ -101,7 +101,7 @@ Either way, you need the exact field names. Rules match on them (case, spaces an
 
 ## 5. Who gets leads?
 
-Ask for each rep's **name** and **email**. Optional: a **booking link** (Calendly, HubSpot Meetings, Cal.com and so on). It's passed along in the webhook so their tools can send it. Give each rep a short lowercase id (`sam`, `jo`).
+Ask for each rep's **name** and **email**. Optional: a **booking link** (Calendly, HubSpot Meetings, Cal.com and so on). It's passed along in the webhook so their tools can send it, and on option 2 it powers the booking pop-up. Give each rep a short lowercase id (`sam`, `jo`).
 
 If someone is out right now, set `away_until: YYYY-MM-DD`.
 
@@ -206,6 +206,27 @@ server:
 5. Check `https://<public_url>/health` answers `{"ok":true,...}`, then go to step 12.
 
 If Salesforce is down when a lead arrives, the form still gets its answer, and the lead routes as soon as Salesforce answers again (Baton retries every minute).
+
+### Booking pop-up (option 2 only)
+
+After a website form is sent, Baton can open the routed rep's booking page in a pop-up, with the visitor's name and email filled in. The snippet holds the form for up to 3 seconds while Baton routes; when the visitor books or closes the pop-up, the form carries on exactly as before (thank-you page and all). If Baton is slow or down, the form just carries on with no pop-up. Form tools sending to `/hook` get no pop-up.
+
+Ask:
+- **Pop-up after the form?** Recommend yes. Each rep then needs a `booking_link` (step 5): their Calendly, HubSpot Meetings, Cal.com, SavvyCal or Google booking page, or any booking URL.
+- **Skip pool reps with no open time?** Recommend yes. Baton checks Calendly, HubSpot Meetings and Cal.com pages; other links are shown but never checked. This applies to pools only: a lead going to its existing Salesforce owner or to one named rep goes to them whatever their calendar says.
+  - **How far ahead counts?** Recommend 5 days.
+  - **Nobody in the pool has open time:** `route_anyway` (recommended: the lead still gets a rep and their booking page) or `fallback`.
+  - **Connecting calendars:** Cal.com needs nothing. HubSpot: in HubSpot, **Settings > Integrations > Private Apps > Create a private app**, give it the scope `scheduler.meetings.meeting-link.read`, copy the token, run `npx -y baton-router@latest calendar token hubspot <token>`. Calendly: **Integrations > API & Webhooks > Personal Access Tokens**, create one (an admin's token can see every rep's page), run `npx -y baton-router@latest calendar token calendly <token>`. Do this before `secrets export`, so the tokens travel to the server.
+  - `npx -y baton-router@latest calendar check` shows each rep's page and whether it has open time.
+  - Anything Baton can't check (no token, an error, a page it can't see) counts as free, so a calendar problem never stops a lead.
+
+```yaml
+calendar:
+  popup: true
+  check_availability: true
+  days_ahead: 5
+  if_nobody_free: route_anyway
+```
 
 ## 11. Write baton.yaml
 

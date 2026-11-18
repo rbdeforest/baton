@@ -13,7 +13,9 @@ Set up Baton for me: read https://raw.githubusercontent.com/rbdeforest/baton/mai
 - **Salesforce, if you use it.** Log in through a browser tab and leads go to whoever already owns the account, contact or lead, and rules can use account fields. Baton only reads; it never writes to Salesforce.
 - **One file.** Everything lives in `baton.yaml` ([schema](schema/baton.schema.json)), so you can read it, edit it and keep it in git.
 
-Coming: hosted Baton, one-click deploy buttons, and a calendar pop-up after the form.
+- **Booking pop-up.** On your own server, the routed rep's Calendly, HubSpot Meetings or Cal.com page pops up after the form, skipping reps with no open time.
+
+Coming: hosted Baton and one-click deploy buttons.
 
 ## Commands
 

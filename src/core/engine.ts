@@ -79,11 +79,15 @@ function dropReason(config: Config, lead: Lead): string | null {
 }
 
 /** Pick the next rep in a pool, or explain why nobody can take the lead. */
+/** Rep id -> has open time. Reps missing from the map are treated as free. */
+export type Availability = Map<string, boolean>;
+
 export function pickFromPool(
   config: Config,
   poolId: string,
   state: State,
   now: Date,
+  available?: Availability,
 ): { rep: Rep } | { reason: string } {
   const pool: Pool | undefined = config.pools?.[poolId];
   if (!pool) return { reason: `pool "${poolId}" does not exist` };
@@ -101,6 +105,11 @@ export function pickFromPool(
     .filter((c) => pool.distribution !== "weighted" || (pool.weights?.[c.id] ?? 1) > 0);
 
   if (candidates.length === 0) return { reason: `everyone in pool "${poolId}" is away or at their daily cap` };
+  if (available) {
+    const free = candidates.filter((c) => available.get(c.id) !== false);
+    if (free.length > 0) candidates.splice(0, candidates.length, ...free);
+    else if (config.calendar?.if_nobody_free === "fallback") return { reason: `nobody in pool "${poolId}" has open time` };
+  }
 
   const score = (id: string) => {
     const count = counters[id]?.count ?? startCount;
@@ -155,6 +164,7 @@ function resolveTarget(
   rule: string,
   state: State,
   now: Date,
+  available?: Availability,
 ): Decision {
   if ("owner" in target) {
     return { status: "unassigned", rule, reason: "owner targets are resolved in route()" };
@@ -165,7 +175,7 @@ function resolveTarget(
     if (isAway(rep, now)) return { status: "unassigned", rule, reason: `${rep.name} is away` };
     return { status: "routed", rep, rule };
   }
-  const picked = pickFromPool(config, target.pool, state, now);
+  const picked = pickFromPool(config, target.pool, state, now, available);
   if ("reason" in picked) return { status: "unassigned", rule, reason: picked.reason };
   return { status: "routed", rep: picked.rep, pool: target.pool, rule };
 }
@@ -176,7 +186,7 @@ function resolveTarget(
  * (everyone away or capped) falls through to the fallback. A Salesforce-owner
  * route with no usable owner doesn't count as a match: the next route is tried.
  */
-export function route(config: Config, lead: Lead, state: State, now: Date): Decision {
+export function route(config: Config, lead: Lead, state: State, now: Date, available?: Availability): Decision {
   const dropped = dropReason(config, lead);
   if (dropped) return { status: "dropped", rule: dropped };
 
@@ -187,7 +197,7 @@ export function route(config: Config, lead: Lead, state: State, now: Date): Deci
       if (owned) return owned;
       continue;
     }
-    const decision = resolveTarget(config, r.assign, `route: ${r.name}`, state, now);
+    const decision = resolveTarget(config, r.assign, `route: ${r.name}`, state, now, available);
     if (decision.status === "routed") return decision;
     break;
   }
@@ -196,7 +206,7 @@ export function route(config: Config, lead: Lead, state: State, now: Date): Deci
     const owned = ownerDecision(config, lead, fb.owner, fb.if_not_rep, "fallback", now);
     return owned ?? { status: "unassigned", rule: "fallback", reason: "no usable Salesforce owner" };
   }
-  const fallback = resolveTarget(config, fb, "fallback", state, now);
+  const fallback = resolveTarget(config, fb, "fallback", state, now, available);
   if (fallback.status === "unassigned") {
     return { ...fallback, reason: `fallback can't take it: ${fallback.reason}` };
   }

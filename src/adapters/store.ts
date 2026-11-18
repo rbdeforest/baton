@@ -12,6 +12,9 @@ export interface Secrets {
   /** Server mode: the key form tools send to /hook. */
   hook_secret?: string;
   salesforce?: SalesforceCredentials;
+  /** Calendar tokens for checking open time (server mode). */
+  calendly_token?: string;
+  hubspot_token?: string;
 }
 
 export interface LogLine {

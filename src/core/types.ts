@@ -73,6 +73,19 @@ export interface Config {
   fallback: Target;
   webhook: { url: string };
   crm?: SalesforceConfig;
+  /** Server only: the booking pop-up after the form. */
+  calendar?: CalendarConfig;
+}
+
+export interface CalendarConfig {
+  /** Show the routed rep's booking page in a pop-up after the form. */
+  popup: boolean;
+  /** Skip pool reps with no open time on Calendly, HubSpot Meetings or Cal.com. */
+  check_availability: boolean;
+  /** How far ahead counts as "has open time". */
+  days_ahead: number;
+  /** Nobody in the pool has open time: route anyway, or send the lead to the fallback. */
+  if_nobody_free: "route_anyway" | "fallback";
 }
 
 export interface ServerConfig {

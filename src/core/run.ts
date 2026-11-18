@@ -4,7 +4,7 @@
 
 import type { Config, CrmContext, Decision, Lead, OutboxItem, Processed, State, WebhookPayload } from "./types.ts";
 import { findCompany, findEmail, findName } from "./fields.ts";
-import { pruneDaily, recordAssignment, route } from "./engine.ts";
+import { pruneDaily, recordAssignment, route, type Availability } from "./engine.ts";
 import type { MarkRow, SheetInbox } from "../adapters/sheet.ts";
 import type { LogLine } from "../adapters/store.ts";
 
@@ -78,8 +78,9 @@ export function decide(
   lead: Lead,
   at: Date,
   batonId: string,
+  available?: Availability,
 ): { decision: Decision; payload: WebhookPayload; logLine: LogLine } {
-  const decision = route(config, lead, state, at);
+  const decision = route(config, lead, state, at, available);
   recordAssignment(config, state, decision, at);
   const payload = buildPayload(lead, decision, batonId, at);
   state.outbox.push({ id: batonId, payload, attempts: 0 });

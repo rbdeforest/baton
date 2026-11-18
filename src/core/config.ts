@@ -70,5 +70,7 @@ function crossCheck(config: Config): string[] {
     }
   });
   checkTarget(config.fallback, "fallback");
+  if (config.calendar && config.run.mode !== "server") problems.push("calendar only works when Baton runs as a server (run: { mode: server })");
+  if (config.calendar?.popup && !config.reps.some((r) => r.booking_link)) problems.push("calendar.popup is on, but no rep has a booking_link");
   return problems;
 }

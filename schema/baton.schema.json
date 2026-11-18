@@ -280,6 +280,40 @@
           "description": "Most leads one IP address can send per minute."
         }
       }
+    },
+    "calendar": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "popup",
+        "check_availability",
+        "days_ahead",
+        "if_nobody_free"
+      ],
+      "description": "Server only: show the routed rep's booking page in a pop-up after the form (reps need a booking_link).",
+      "properties": {
+        "popup": {
+          "type": "boolean",
+          "description": "Show the routed rep's booking page in a pop-up after the form."
+        },
+        "check_availability": {
+          "type": "boolean",
+          "description": "Skip pool reps with no open time (Calendly, HubSpot Meetings and Cal.com pages only)."
+        },
+        "days_ahead": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 31,
+          "description": "How many days ahead count as having open time."
+        },
+        "if_nobody_free": {
+          "enum": [
+            "route_anyway",
+            "fallback"
+          ],
+          "description": "Nobody in the pool has open time: route anyway, or send the lead to the fallback."
+        }
+      }
     }
   },
   "definitions": {

@@ -16,6 +16,7 @@ import { connectSalesforce } from "./connect.ts";
 import { API_VERSION, DEFAULT_CLIENT_ID, SalesforceClient, lookup } from "../adapters/salesforce.ts";
 import { findEmail } from "../core/fields.ts";
 import { createBatonServer } from "../server/server.ts";
+import { CalendarChecker, parseBookingLink } from "../adapters/calendars.ts";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const VERSION = (JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string }).version;
@@ -38,6 +39,10 @@ const HELP = `baton-router ${VERSION}: open-source lead router
   hook-secret              The key form tools send to /hook (server mode)
   secrets export           One line to copy the logins onto a new server
                            (set it as BATON_SECRETS there; used once)
+
+  calendar token calendly|hubspot TOKEN
+                           Save a token so Baton can check reps' open time
+  calendar check           Each rep's booking page and whether it has open time
 
   connect salesforce       Log in to Salesforce in your browser
            [--login-url URL]  (sandbox: https://test.salesforce.com)
@@ -170,7 +175,9 @@ async function main(argv: string[]): Promise<number> {
     case "snippet": {
       const config = loadConfig(configPath);
       const target = config.run.mode === "server" ? `${config.server!.public_url.replace(/\/$/, "")}/lead` : laptopOnly(config, "snippet").script_url;
-      const js = readFileSync(join(PACKAGE_ROOT, "snippet", "baton.js"), "utf8").replace("__BATON_INBOX__", target);
+      const js = readFileSync(join(PACKAGE_ROOT, "snippet", "baton.js"), "utf8")
+        .replace("__BATON_INBOX__", target)
+        .replace('"__BATON_MODE__"', JSON.stringify(config.run.mode));
       console.log(`<!-- Baton: add data-baton to the <form> tag, and put this before </body> -->\n<script>\n${js.trim()}\n</script>`);
       return 0;
     }
@@ -279,6 +286,7 @@ async function main(argv: string[]): Promise<number> {
         appendLog: (lines) => store.appendLog(lines),
         deliver: (payload) => deliver(config.webhook.url, webhookSecret, payload),
         lookup: crmLookup(config, store),
+        calendars: new CalendarChecker(store.loadSecrets()),
         version: VERSION,
       });
       const port = Number(process.env.PORT ?? arg(args, "--port") ?? 8080);
@@ -311,6 +319,35 @@ async function main(argv: string[]): Promise<number> {
       ensureSecret(store, "hook_secret");
       console.log(Buffer.from(JSON.stringify(store.loadSecrets())).toString("base64"));
       return 0;
+    }
+
+    case "calendar": {
+      const sub = args[0];
+      if (sub === "token") {
+        const which = args[1];
+        const token = args[2];
+        if ((which !== "calendly" && which !== "hubspot") || !token) throw new Error("use: calendar token calendly|hubspot TOKEN");
+        store.saveSecrets({ ...store.loadSecrets(), [`${which}_token`]: token });
+        console.log(`Saved the ${which === "calendly" ? "Calendly" : "HubSpot"} token.`);
+        return 0;
+      }
+      if (sub === "check") {
+        const config = loadConfig(configPath);
+        const checker = new CalendarChecker(store.loadSecrets());
+        const days = config.calendar?.days_ahead ?? 5;
+        for (const rep of config.reps) {
+          if (!rep.booking_link) {
+            console.log(`${rep.name}: no booking link`);
+            continue;
+          }
+          const page = parseBookingLink(rep.booking_link);
+          const free = await checker.isFree(rep.booking_link, days);
+          const status = page.provider === "link" ? "not checked (pop-up only)" : free === null ? "couldn't check (counts as free)" : free ? `open time in the next ${days} days` : `no open time in the next ${days} days`;
+          console.log(`${rep.name}: ${page.provider}, ${status}`);
+        }
+        return 0;
+      }
+      throw new Error("use: calendar token calendly|hubspot TOKEN | calendar check");
     }
 
     case "connect": {

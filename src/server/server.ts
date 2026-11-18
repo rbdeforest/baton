@@ -4,10 +4,11 @@
 // it arrives. Webhooks go out right after; failures retry every minute.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { findEmail } from "../core/fields.ts";
+import { findEmail, findName } from "../core/fields.ts";
 import { decide, flushOutbox, newBatonId, trimProcessed } from "../core/run.ts";
-import { pruneDaily } from "../core/engine.ts";
-import type { Config, CrmContext, Lead, State, WebhookPayload } from "../core/types.ts";
+import { pruneDaily, route, type Availability } from "../core/engine.ts";
+import type { Config, CrmContext, Decision, Lead, State, WebhookPayload } from "../core/types.ts";
+import { parseBookingLink, prefilledUrl, type CalendarChecker, type Provider } from "../adapters/calendars.ts";
 import type { LogLine } from "../adapters/store.ts";
 
 export interface ServerDeps {
@@ -18,6 +19,7 @@ export interface ServerDeps {
   appendLog: (lines: LogLine[]) => void;
   deliver: (payload: WebhookPayload) => Promise<void>;
   lookup?: (lead: Lead) => Promise<CrmContext>;
+  calendars?: CalendarChecker;
   log?: (line: string) => void;
   now?: () => Date;
   version: string;
@@ -144,8 +146,30 @@ export function createBatonServer(deps: ServerDeps): { server: Server; drain: ()
       save();
     }).catch((e: Error) => log(`webhook flush failed: ${e.message}`));
 
-  /** Look up, route and record one lead. False if Salesforce didn't answer (the lead waits). */
-  async function process(lead: Lead, batonId: string): Promise<boolean> {
+  /**
+   * Which pool reps have open time, checked only for the pool the lead is
+   * headed to (and the fallback pool if it moves there). Pools only: an owner
+   * or a named rep gets the lead whatever their calendar says.
+   */
+  async function availabilityFor(lead: Lead): Promise<Availability | undefined> {
+    const cal = config.calendar;
+    if (!cal?.check_availability || !deps.calendars) return undefined;
+    const available: Availability = new Map();
+    const checked = new Set<string>();
+    for (let i = 0; i < 4; i++) {
+      const d = route(config, lead, state, now(), available);
+      const pool = d.status === "routed" ? d.pool : undefined;
+      if (!pool || checked.has(pool)) break;
+      checked.add(pool);
+      const reps = (config.pools?.[pool]?.reps ?? []).map((id) => config.reps.find((r) => r.id === id)).filter((r) => r?.booking_link);
+      const free = await Promise.all(reps.map((r) => deps.calendars!.isFree(r!.booking_link!, cal.days_ahead)));
+      reps.forEach((r, j) => available.set(r!.id, free[j] !== false));
+    }
+    return available;
+  }
+
+  /** Look up, route and record one lead. Null if Salesforce didn't answer (the lead waits). */
+  async function process(lead: Lead, batonId: string): Promise<Decision | null> {
     if (deps.lookup) {
       try {
         lead.crm = await deps.lookup(lead);
@@ -158,16 +182,26 @@ export function createBatonServer(deps: ServerDeps): { server: Server; drain: ()
           state.pending!.push({ lead, baton_id: batonId, received_at: now().toISOString(), attempts: 1, last_error: (e as Error).message });
         }
         log(`${findEmail(lead.fields) ?? "(no email)"} waiting: Salesforce lookup failed: ${(e as Error).message}`);
-        return false;
+        return null;
       }
     }
-    const { decision, logLine } = decide(config, state, lead, now(), batonId);
+    const { decision, logLine } = decide(config, state, lead, now(), batonId, await availabilityFor(lead));
     deps.appendLog([logLine]);
     log(`${logLine.email ?? "(no email)"} -> ${decision.status}${logLine.routed_to ? ` ${logLine.routed_to}` : ""} [${decision.rule}]`);
-    return true;
+    return decision;
   }
 
-  function accept(fields: Record<string, string>, submissionId: string | undefined): Promise<{ baton_id: string; duplicate?: boolean }> {
+  /** The routed rep's booking page for the pop-up, with the lead's name and email filled in. */
+  function bookingFor(decision: Decision | null, fields: Record<string, string>): { url: string; provider: Provider } | undefined {
+    if (!config.calendar?.popup || decision?.status !== "routed" || !decision.rep.booking_link) return undefined;
+    const page = parseBookingLink(decision.rep.booking_link);
+    return { url: prefilledUrl(page, findName(fields), findEmail(fields)), provider: page.provider };
+  }
+
+  function accept(
+    fields: Record<string, string>,
+    submissionId: string | undefined,
+  ): Promise<{ baton_id: string; duplicate?: boolean; booking?: { url: string; provider: Provider } }> {
     return serial(async () => {
       const batonId = newBatonId();
       const key = `srv:${submissionId ?? batonId}`;
@@ -175,9 +209,10 @@ export function createBatonServer(deps: ServerDeps): { server: Server; drain: ()
       if (done) return { baton_id: done.baton_id, duplicate: true };
       const waiting = state.pending!.find((p) => p.lead.key === key);
       if (waiting) return { baton_id: waiting.baton_id, duplicate: true };
-      await process({ key, ref: 0, fields }, batonId);
+      const decision = await process({ key, ref: 0, fields }, batonId);
       save();
-      return { baton_id: batonId };
+      const booking = bookingFor(decision, fields);
+      return { baton_id: batonId, ...(booking ? { booking } : {}) };
     });
   }
 
@@ -185,7 +220,7 @@ export function createBatonServer(deps: ServerDeps): { server: Server; drain: ()
     await serial(async () => {
       const queue = [...state.pending!];
       for (const p of queue) {
-        if (await process(p.lead, p.baton_id)) state.pending = state.pending!.filter((x) => x !== p);
+        if ((await process(p.lead, p.baton_id)) !== null) state.pending = state.pending!.filter((x) => x !== p);
       }
       if (queue.length) save();
     });
