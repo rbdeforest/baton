@@ -201,7 +201,7 @@ server:
 2. Run `npx -y baton-router@latest secrets export`. It prints one line holding Baton's keys and the Salesforce login. On the server, set it as the setting `BATON_SECRETS`. Baton copies it into its folder the first time it starts, and uses its own saved copy after that. Treat it like a password.
 3. Copy `baton.yaml` to the server: with Docker into the `/data` volume, otherwise into the folder Baton runs from.
 4. Start it:
-   - **Docker:** build the image from the Baton repository (`docker build -t baton .`), then run it with the volume, `PORT` and `BATON_SECRETS`.
+   - **Docker:** use the ready-made image `ghcr.io/rbdeforest/baton:latest` (or a version like `:0.3.0`). Mount their data volume at `/data`, publish port 8080, and set `BATON_SECRETS` and `TZ`. For example: `docker run -d --restart unless-stopped -p 8080:8080 -v baton-data:/data -e BATON_SECRETS=... -e TZ=America/New_York ghcr.io/rbdeforest/baton:latest` (copy `baton.yaml` into the volume first).
    - **Node:** `npx -y baton-router@latest serve` in that folder, kept running by their usual process manager (systemd, pm2 or their host's start command).
 5. Check `https://<public_url>/health` answers `{"ok":true,...}`, then go to step 12.
 

@@ -7,7 +7,7 @@ Set up Baton for me: read https://raw.githubusercontent.com/rbdeforest/baton/mai
 ```
 
 - **Free on your computer.** Leads wait in a Google Sheet, and a background job routes them every few minutes.
-- **Instant on your own server.** `baton-router serve` (Node or Docker): forms post straight to Baton and each lead routes in about a second.
+- **Instant on your own server.** `baton-router serve` or the `ghcr.io/rbdeforest/baton` image: forms post straight to Baton and each lead routes in about a second.
 - **Your rules.** Drop junk, split by any form answer, round robin (even or weighted), daily caps, away dates, a fallback.
 - **Your tools.** Every result goes to a signed webhook. Zapier, n8n or your own agent writes it wherever you want.
 - **Salesforce, if you use it.** Log in through a browser tab and leads go to whoever already owns the account, contact or lead, and rules can use account fields. Baton only reads; it never writes to Salesforce.
